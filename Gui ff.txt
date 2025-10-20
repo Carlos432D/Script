@@ -1,0 +1,353 @@
+--[[
+Single server script (colocar em ServerScriptService)
+O script cria:
+- RemoteEvent para comunicação client->server
+- Ao entrar, injeta um LocalScript no PlayerGui (gera o GUI azul arrastável + botão)
+- Gerencia o estado "ForceField mode (FF)" no servidor:
+    * Adiciona ForceField visual ao personagem (visível para todos)
+    * Torna o jogador praticamente invencível (restaura health se alterado)
+    * Retira ferramentas do jogador enquanto FF ativo (guarda em ServerStorage)
+    * Reaplica automaticamente após respawn enquanto FF estiver ativo
+--]]
+
+local Players = game:GetService("Players")
+local ServerStorage = game:GetService("ServerStorage")
+local RunService = game:GetService("RunService")
+
+local scriptParent = script
+
+-- RemoteEvent para pedidos do cliente (ativar/desativar ff)
+local remote = Instance.new("RemoteEvent")
+remote.Name = "ToggleFFEvent"
+remote.Parent = scriptParent
+
+-- Pasta em ServerStorage para guardar ferramentas temporariamente
+local storedToolsFolder = ServerStorage:FindFirstChild("FF_StoredTools")
+if not storedToolsFolder then
+    storedToolsFolder = Instance.new("Folder")
+    storedToolsFolder.Name = "FF_StoredTools"
+    storedToolsFolder.Parent = ServerStorage
+end
+
+-- Tabela para rastrear quais jogadores estão com FF ativo
+local ffActive = {}
+
+-- Função para guardar ferramentas do jogador
+local function storePlayerTools(player)
+    local pid = tostring(player.UserId)
+    local folder = Instance.new("Folder")
+    folder.Name = "Stored_" .. pid
+    folder.Parent = storedToolsFolder
+
+    -- pegar Backpack e Character tools
+    local backpack = player:FindFirstChildOfClass("Backpack")
+    if backpack then
+        for _, tool in ipairs(backpack:GetChildren()) do
+            if tool:IsA("Tool") then
+                tool.Parent = folder
+            end
+        end
+    end
+    local character = player.Character
+    if character then
+        for _, tool in ipairs(character:GetChildren()) do
+            if tool:IsA("Tool") then
+                tool.Parent = folder
+            end
+        end
+    end
+    return folder
+end
+
+-- Função para restore tools ao player
+local function restorePlayerTools(player)
+    local pid = tostring(player.UserId)
+    local folder = storedToolsFolder:FindFirstChild("Stored_" .. pid)
+    if not folder then return end
+    local backpack = player:FindFirstChildOfClass("Backpack")
+    if not backpack then
+        -- se ainda não existe Backpack, cria uma e coloca depois
+        backpack = Instance.new("Folder")
+        backpack.Name = "Backpack"
+        backpack.Parent = player
+    end
+    for _, item in ipairs(folder:GetChildren()) do
+        item.Parent = backpack
+    end
+    folder:Destroy()
+end
+
+-- Função que aplica FF a um personagem
+local function applyFFToCharacter(player, character)
+    if not character then return end
+    local humanoid = character:FindFirstChildOfClass("Humanoid")
+    if not humanoid then return end
+
+    -- Criar ForceField (visível para todos)
+    if not character:FindFirstChildOfClass("ForceField") then
+        local ff = Instance.new("ForceField")
+        ff.Name = "ServerAppliedForceField"
+        ff.Parent = character
+    end
+
+    -- Guardar e remover ferramentas para evitar causar dano por ferramentas
+    storePlayerTools(player)
+
+    -- Marcar humanoid como invulnerável via atributo e conexão
+    humanoid:SetAttribute("FF_Invulnerable", true)
+
+    -- Ajustar MaxHealth para alto valor (não infinito), e restaurar health sempre que mudar
+    local originalMax = humanoid.MaxHealth
+    humanoid:SetAttribute("FF_OriginalMaxHealth", originalMax)
+    local bigHealth = 1e7
+    humanoid.MaxHealth = bigHealth
+    humanoid.Health = humanoid.MaxHealth
+
+    -- Conexão para restaurar vida se sofrer dano
+    if not humanoid:FindFirstChild("FF_HealthConn") then
+        local bind = Instance.new("BoolValue")
+        bind.Name = "FF_HealthConn"
+        bind.Parent = humanoid
+        -- Conexão via RunService porque HealthChanged event pode ser abused; usamos Heartbeat safe restore
+        local conn
+        conn = humanoid.HealthChanged:Connect(function(h)
+            -- Se ainda estiver FF e humanoid existir
+            if humanoid and humanoid:GetAttribute("FF_Invulnerable") then
+                if humanoid.Health < humanoid.MaxHealth then
+                    humanoid.Health = humanoid.MaxHealth
+                end
+            else
+                if conn then conn:Disconnect() end
+                if bind and bind.Parent then bind:Destroy() end
+            end
+        end)
+    end
+end
+
+-- Função que remove FF do personagem e restaura estado
+local function removeFFFromCharacter(player, character)
+    if not character then return end
+    local humanoid = character:FindFirstChildOfClass("Humanoid")
+    if humanoid then
+        -- remove atributo invulnerável
+        humanoid:SetAttribute("FF_Invulnerable", false)
+
+        -- restore MaxHealth
+        local orig = humanoid:GetAttribute("FF_OriginalMaxHealth")
+        if type(orig) == "number" and orig > 0 then
+            humanoid.MaxHealth = orig
+            humanoid.Health = math.min(humanoid.Health, humanoid.MaxHealth)
+        end
+
+        -- remove connection marker if exists
+        local connMarker = humanoid:FindFirstChild("FF_HealthConn")
+        if connMarker then
+            connMarker:Destroy()
+        end
+    end
+
+    -- remover ForceField visual
+    local ffobj = character:FindFirstChild("ServerAppliedForceField")
+    if ffobj and ffobj:IsA("ForceField") then
+        ffobj:Destroy()
+    end
+
+    -- restore tools
+    restorePlayerTools(player)
+end
+
+-- Ativa FF (server-side)
+local function activateFF(player)
+    if ffActive[player] then return end
+    ffActive[player] = true
+
+    -- aplicar ao personagem atual se existir
+    local character = player.Character
+    if character then
+        applyFFToCharacter(player, character)
+    end
+
+    -- quando respawnar, reaplicar
+    player.CharacterAdded:Connect(function(char)
+        if ffActive[player] then
+            -- esperar humanoid
+            local humanoid = char:WaitForChild("Humanoid", 5)
+            if humanoid then
+                applyFFToCharacter(player, char)
+            end
+        end
+    end)
+end
+
+-- Desativa FF (server-side)
+local function deactivateFF(player)
+    if not ffActive[player] then return end
+    ffActive[player] = nil
+    local character = player.Character
+    if character then
+        removeFFFromCharacter(player, character)
+    end
+end
+
+-- Handler do RemoteEvent (cliente pede toggle)
+remote.OnServerEvent:Connect(function(player)
+    -- segurança: validar player
+    if not player or not player.Parent then return end
+
+    if ffActive[player] then
+        deactivateFF(player)
+    else
+        activateFF(player)
+    end
+end)
+
+-- Limpar quando jogador sair
+Players.PlayerRemoving:Connect(function(player)
+    ffActive[player] = nil
+    -- destruir possíveis pastas guardadas
+    local pid = tostring(player.UserId)
+    local folder = storedToolsFolder:FindFirstChild("Stored_" .. pid)
+    if folder then
+        folder:Destroy()
+    end
+end)
+
+-- Injeta um LocalScript no PlayerGui quando o jogador entra, contendo o GUI e lógica client-side
+Players.PlayerAdded:Connect(function(player)
+    player.CharacterAdded:Connect(function() end) -- força a criação das coisas mais tarde
+
+    -- cria um LocalScript dinamicamente
+    local lsSource = [[
+-- LocalScript injetado no PlayerGui
+local player = game.Players.LocalPlayer
+local remote = script:WaitForChild("ToggleFFEvent", 5) or nil
+
+-- cria GUI: ScreenGui > Frame (arrastável) > Button
+local screenGui = Instance.new("ScreenGui")
+screenGui.Name = "FF_ControlGui"
+screenGui.ResetOnSpawn = true
+screenGui.Parent = player:WaitForChild("PlayerGui")
+
+local frame = Instance.new("Frame")
+frame.Name = "BlueFrame"
+frame.Size = UDim2.new(0,220,0,80)
+frame.Position = UDim2.new(0.02,0,0.02,0)
+frame.BackgroundColor3 = Color3.fromRGB(35, 97, 240) -- tom de azul
+frame.BorderSizePixel = 0
+frame.Parent = screenGui
+frame.Active = true
+
+local title = Instance.new("TextLabel")
+title.Size = UDim2.new(1,0,0,24)
+title.BackgroundTransparency = 1
+title.Text = "ForceField (FF)"
+title.TextColor3 = Color3.new(1,1,1)
+title.Font = Enum.Font.SourceSansBold
+title.TextSize = 18
+title.Parent = frame
+
+local btn = Instance.new("TextButton")
+btn.Name = "FFButton"
+btn.Size = UDim2.new(0,120,0,36)
+btn.Position = UDim2.new(0.5,-60,0.5,-18)
+btn.AnchorPoint = Vector2.new(0.5,0.5)
+btn.Text = "Ativar FF"
+btn.Font = Enum.Font.SourceSansBold
+btn.TextSize = 18
+btn.Parent = frame
+btn.AutoButtonColor = true
+
+-- indicador de status
+local status = Instance.new("TextLabel")
+status.Size = UDim2.new(1,0,0,18)
+status.Position = UDim2.new(0,0,1, -18)
+status.BackgroundTransparency = 1
+status.Text = "Status: Inativo"
+status.TextColor3 = Color3.new(1,1,1)
+status.Font = Enum.Font.SourceSans
+status.TextSize = 14
+status.Parent = frame
+
+-- Draggable implementation (funciona para mouse e toque)
+local UserInputService = game:GetService("UserInputService")
+local dragging = false
+local dragStart = nil
+local startPos = nil
+
+local function onInputBegan(input)
+    if input.UserInputType == Enum.UserInputType.MouseButton1 or input.UserInputType == Enum.UserInputType.Touch then
+        local mousePos = input.Position
+        if frame and frame.AbsolutePosition and frame.AbsoluteSize then
+            local x1 = frame.AbsolutePosition.X
+            local y1 = frame.AbsolutePosition.Y
+            local x2 = x1 + frame.AbsoluteSize.X
+            local y2 = y1 + frame.AbsoluteSize.Y
+            if mousePos.X >= x1 and mousePos.X <= x2 and mousePos.Y >= y1 and mousePos.Y <= y2 then
+                dragging = true
+                dragStart = mousePos
+                startPos = frame.Position
+            end
+        end
+    end
+end
+
+local function onInputChanged(input)
+    if dragging and input.Position and dragStart and startPos then
+        local delta = input.Position - dragStart
+        frame.Position = UDim2.new(startPos.X.Scale, startPos.X.Offset + delta.X, startPos.Y.Scale, startPos.Y.Offset + delta.Y)
+    end
+end
+
+local function onInputEnded(input)
+    if input.UserInputType == Enum.UserInputType.MouseButton1 or input.UserInputType == Enum.UserInputType.Touch then
+        dragging = false
+    end
+end
+
+UserInputService.InputBegan:Connect(onInputBegan)
+UserInputService.InputChanged:Connect(onInputChanged)
+UserInputService.InputEnded:Connect(onInputEnded)
+
+-- Toggle local UI state (reflete ativação retornada por server via ForceField visibility)
+local isActive = false
+btn.MouseButton1Click:Connect(function()
+    if remote then
+        remote:FireServer()
+        -- toggle visual imediato (o server também aplicará ForceField; este toggle é apenas feedback)
+        isActive = not isActive
+        if isActive then
+            btn.Text = "Desativar FF"
+            status.Text = "Status: Ativo"
+        else
+            btn.Text = "Ativar FF"
+            status.Text = "Status: Inativo"
+        end
+    end
+end)
+]]
+
+    -- Criar container LocalScript
+    local localScript = Instance.new("LocalScript")
+    localScript.Name = "FF_LocalGui"
+    localScript.Source = lsSource
+
+    -- Criar RemoteEvent de referência dentro do LocalScript para que ele encontre
+    local remoteRef = remote:Clone()
+    remoteRef.Parent = localScript
+
+    -- Parent o LocalScript no PlayerGui
+    -- Esperar PlayerGui existir
+    local guip = player:WaitForChild("PlayerGui", 10)
+    if guip then
+        localScript.Parent = guip
+    else
+        -- fallback: parent no player (não ideal)
+        localScript.Parent = player
+    end
+end)
+
+-- OBS: O script acima injeta o LocalScript com o RemoteEvent embutido (cópia) para chamadas do cliente.
+-- O RemoteEvent real (no servidor) já existe e é o 'remote' criado no topo. O event do client chama o servidor,
+-- que faz as alterações de estado e aplica ForceField.
+
+print("FF single server script pronto - coloque este script em ServerScriptService")

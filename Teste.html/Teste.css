@@ -1,0 +1,23 @@
+<!doctype html>
+ <html>
+   <body>
+     <div href="h1">
+     <h1><em>bem vindo ao site</em></h1>
+     </div>
+   <br>
+   <div href="p">
+   <h4>jogue agora o roblox</h4>
+   <a href="https://roblox.com">link do jogo</a>
+   </div>
+   <br>
+   <input placeholder="teste" type="text">
+   <br>
+   <input type="date">
+   <br>
+   <input text=" aceita" type="checkbox">
+   <br>
+   <figure>
+   <img src="img/roblox/icon/.html" height="100" width="100"></img>
+   </figure>
+   </body>
+ </html>

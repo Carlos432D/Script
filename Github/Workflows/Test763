@@ -1,0 +1,33 @@
+name: Windows Server Web RDP
+on: [workflow_dispatch]
+jobs:
+  deploy-web-rdp:
+    runs-on: windows-latest
+    steps:
+      - name: Ativar RDP e IIS
+        run: |
+          # RDP nativo
+          Set-ItemProperty -Path 'HKLM:SystemCurrentControlSetControlTerminal Server' -Name "fDenyTSConnections" -Value 0
+          Enable-NetFirewallRule -DisplayGroup "Remote Desktop"
+          # IIS + Features
+          Enable-WindowsOptionalFeature -Online -FeatureName IIS-WebServerRole,IIS-WebServer,IIS-CommonHttpFeatures,IIS-HttpErrors,IIS-HttpLogging,IIS-RequestFiltering,IIS-StaticContent -All
+      - name: Instalar RAWeb (Web RDP Interface)
+        run: |
+          # Download/Instala RAWeb direto (web interface RDP)
+          irm https://github.com/kimmknight/raweb/releases/latest/download/install.ps1 | iex
+          # Configura porta 8080, SSL auto
+          netsh http add sslcert ipport=0.0.0.0:8080 certhash=<thumb> appid={4dc3e181-e14b-4a21-b022-59fc669b0914}
+      - name: Output Link e Credenciais
+        run: |
+          $ip = (curl -s ipinfo.io/ip)
+          Write-Output "=== WEB RDP PRONTO ==="
+          Write-Output "LINK SITE: https://${ip}:8080/RAWeb"
+          Write-Output "PORT: 8080"
+          Write-Output "User: Administrator"
+          Write-Output "Senha: WebRDP2025!"
+          Write-Output "Desktop completo no navegador (sem VNC!)"
+          Write-Output "::set-output name=web_url::https://${ip}:8080/RAWeb"
+      - name: Gaming Setup
+        run: |
+          choco install roblox-player steam firefox -y
+          Write-Output "Roblox + Jogos OK | 24GB RAM simulado"

@@ -1,0 +1,366 @@
+<!DOCTYPE html>
+<html lang="pt-br">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+    <title>Roblox 2017 Remastered + Gemini AI</title>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <style>
+        body { margin: 0; padding: 0; overflow: hidden; background: #e3e3e3; font-family: 'Segoe UI', Arial, sans-serif; user-select: none; }
+        .roblox-header { background-color: #f2f2f2; border-bottom: 1px solid #d6d6d6; }
+        #joystick-ui { position: absolute; bottom: 40px; left: 40px; width: 100px; height: 100px; background: rgba(0,0,0,0.2); border-radius: 50%; display: none; z-index: 100; pointer-events: auto; }
+        #joystick-knob { position: absolute; top: 50%; left: 50%; width: 40px; height: 40px; background: rgba(255,255,255,0.5); border-radius: 50%; transform: translate(-50%, -50%); }
+        #jump-ui { position: absolute; bottom: 40px; right: 40px; width: 80px; height: 80px; background: rgba(0,0,0,0.3); border-radius: 50%; display: none; z-index: 100; align-items: center; justify-content: center; color: white; font-weight: bold; pointer-events: auto; border: 2px solid rgba(255,255,255,0.2); text-shadow: 1px 1px 2px black; }
+        #jump-ui:active { background: rgba(255,255,255,0.4); }
+        .game-card { background: white; border: 1px solid #ddd; border-radius: 4px; padding: 6px; cursor: pointer; transition: transform 0.1s; }
+        .game-card:active { transform: scale(0.95); }
+        .name-tag { position: absolute; background: rgba(0,0,0,0.5); color: white; padding: 2px 6px; border-radius: 4px; font-size: 10px; font-weight: bold; pointer-events: none; transform: translate(-50%, -100%); white-space: nowrap; border: 1px solid rgba(255,255,255,0.2); }
+        .ai-chat-msg { margin-bottom: 4px; padding: 4px; border-radius: 4px; background: rgba(255,255,255,0.1); }
+    </style>
+</head>
+<body>
+
+    <!-- INTERFACE DO MENU -->
+    <div id="menu-screen" class="fixed inset-0 z-[200] flex flex-col bg-[#e3e3e3]">
+        <div class="roblox-header h-14 flex items-center justify-between px-4">
+            <div class="flex items-center gap-2">
+                <div class="w-8 h-8 bg-[#ef3340] rounded flex items-center justify-center text-white font-black italic">R</div>
+                <span class="font-bold text-gray-700 text-xl tracking-tighter">ROBLOX</span>
+            </div>
+            <div class="flex flex-col items-end">
+                <div id="player-nick-display" class="text-[11px] font-bold text-gray-700">Carregando...</div>
+                <div id="player-id-display" class="text-[8px] text-gray-400">ID: ----</div>
+            </div>
+        </div>
+
+        <div class="bg-white h-12 flex border-b border-gray-200">
+            <button onclick="window.setTab('games')" id="btn-games" class="flex-1 font-bold text-blue-600 border-b-4 border-blue-600 uppercase text-xs">Jogos</button>
+            <button onclick="window.setTab('avatar')" id="btn-avatar" class="flex-1 font-bold text-gray-400 uppercase text-xs">Avatar ✨</button>
+            <button onclick="window.setTab('creator')" id="btn-creator" class="flex-1 font-bold text-gray-400 uppercase text-xs">Criar ✨</button>
+        </div>
+
+        <div id="tab-games" class="flex-1 overflow-y-auto p-4 grid grid-cols-2 gap-3 pb-24">
+            <div onclick="window.joinRoom('Baseplate')" class="game-card">
+                <div class="aspect-square bg-green-500 rounded mb-1 flex items-center justify-center text-white font-bold text-xs p-4 text-center">BASEPLATE CLASSIC</div>
+                <div class="text-[11px] font-bold">Baseplate</div>
+            </div>
+            <div onclick="window.joinRoom('Obby')" class="game-card">
+                <div class="aspect-square bg-orange-400 rounded mb-1 flex items-center justify-center text-white font-bold text-xs p-4 text-center">MEGA OBBY (HARD)</div>
+                <div class="text-[11px] font-bold">Obby Parkour</div>
+            </div>
+        </div>
+
+        <div id="tab-avatar" class="flex-1 hidden flex flex-col overflow-y-auto">
+            <div id="menu-avatar-container" class="h-64 bg-gray-300 shrink-0"></div>
+            <div class="flex-1 bg-white p-4">
+                <div class="mb-4">
+                    <p class="text-[10px] font-bold text-gray-400 uppercase mb-2">Sugestão de Estilo ✨</p>
+                    <div class="flex gap-2">
+                        <input id="ai-style-input" type="text" placeholder="Ex: Pirata do Espaço" class="flex-1 border p-2 text-xs rounded">
+                        <button id="btn-ai-style" class="bg-blue-600 text-white px-3 py-1 text-xs font-bold rounded">Gerar ✨</button>
+                    </div>
+                </div>
+                <p class="text-[10px] font-bold text-gray-400 uppercase mb-2">Cores do Torso</p>
+                <div class="grid grid-cols-4 gap-2">
+                    <button onclick="window.updateAvatar('torso', 0x0059b3)" class="h-8 bg-blue-600 rounded"></button>
+                    <button onclick="window.updateAvatar('torso', 0xff0000)" class="h-8 bg-red-600 rounded"></button>
+                    <button onclick="window.updateAvatar('torso', 0x00aa00)" class="h-8 bg-green-600 rounded"></button>
+                    <button onclick="window.updateAvatar('torso', 0xffd700)" class="h-8 bg-yellow-400 rounded"></button>
+                </div>
+            </div>
+        </div>
+
+        <div id="tab-creator" class="flex-1 hidden p-4 overflow-y-auto bg-white">
+            <h2 class="font-bold text-sm mb-2">Arquiteto de Mundos ✨</h2>
+            <p class="text-xs text-gray-600 mb-4">Descreva o mapa que você quer criar e o Gemini irá gerar os blocos.</p>
+            <textarea id="ai-creator-prompt" class="w-full border rounded p-2 text-xs mb-4" rows="4" placeholder="Ex: Uma torre alta com escadas espirais e uma ponte de vidro suspensa..."></textarea>
+            <button id="btn-ai-create" class="w-full bg-blue-600 text-white py-3 rounded font-bold text-xs">Construir com IA ✨</button>
+            <div id="ai-creator-log" class="mt-4 text-[10px] text-gray-500 italic">Aguardando comando...</div>
+        </div>
+    </div>
+
+    <!-- HUD DO JOGO -->
+    <div id="game-hud" class="fixed inset-0 z-50 pointer-events-none hidden">
+        <div id="joystick-ui"><div id="joystick-knob"></div></div>
+        <div id="jump-ui" class="flex">PULO</div>
+        <button onclick="window.leaveRoom()" class="absolute top-4 left-4 p-2 bg-black/40 text-white text-[10px] font-bold rounded pointer-events-auto">SAIR</button>
+        
+        <!-- Chat Guia IA -->
+        <div class="absolute top-16 left-4 w-48 h-48 pointer-events-auto bg-black/30 rounded p-2 flex flex-col">
+            <div id="ai-chat-display" class="flex-1 overflow-y-auto text-[9px] text-white">
+                <div class="ai-chat-msg"><b>Guia ✨:</b> Olá! Em que posso ajudar?</div>
+            </div>
+            <div class="flex gap-1 mt-1">
+                <input id="ai-chat-input" type="text" placeholder="Pergunte..." class="flex-1 bg-white/20 text-white text-[9px] p-1 border-none outline-none">
+                <button id="btn-ai-chat-send" class="bg-blue-500 text-white text-[8px] px-2 rounded">Enviar</button>
+            </div>
+        </div>
+
+        <div id="player-count" class="absolute top-4 right-4 text-white text-[10px] font-bold">Online: 1</div>
+        <div id="nametags-container" class="absolute inset-0"></div>
+    </div>
+
+    <script type="module">
+        import { initializeApp } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-app.js";
+        import { getAuth, signInAnonymously, onAuthStateChanged, signInWithCustomToken } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-auth.js";
+        import { getFirestore, doc, setDoc, onSnapshot, collection, deleteDoc } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-firestore.js";
+
+        // CONFIGURAÇÕES
+        const apiKey = ""; // Injetado automaticamente
+        let app, auth, db;
+        const appId = typeof __app_id !== 'undefined' ? __app_id : 'roblox-2017-classic';
+
+        // ESTADO
+        let currentUser = null;
+        let currentRoom = null;
+        const playerNick = "Jogador_" + Math.floor(1000 + Math.random() * 8999);
+        const playerID = Math.random().toString(36).substr(2, 9).toUpperCase();
+        
+        let scene, camera, renderer, clock;
+        let myPlayerMesh, menuPlayerMesh;
+        let menuScene, menuCamera, menuRenderer;
+
+        let joystick = { active: false, x: 0, y: 0 };
+        let cameraAngle = { h: 0, v: 0.5 };
+        let physics = { velY: 0, onGround: false };
+        let platforms = [];
+        let otherPlayers = {}; 
+        let myAvatar = { head: 0xffd700, torso: 0x0059b3, legs: 0x1b7332, acc: null };
+
+        // --- GEMINI API HELPER ---
+        async function fetchGemini(prompt, systemPrompt = "") {
+            const url = `https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash-preview-09-2025:generateContent?key=${apiKey}`;
+            const body = {
+                contents: [{ parts: [{ text: prompt }] }],
+                systemInstruction: { parts: [{ text: systemPrompt }] }
+            };
+            
+            for (let i = 0; i < 5; i++) {
+                try {
+                    const response = await fetch(url, {
+                        method: 'POST',
+                        headers: { 'Content-Type': 'application/json' },
+                        body: JSON.stringify(body)
+                    });
+                    const data = await response.json();
+                    return data.candidates?.[0]?.content?.parts?.[0]?.text;
+                } catch (e) {
+                    await new Promise(r => setTimeout(r, Math.pow(2, i) * 1000));
+                }
+            }
+            return null;
+        }
+
+        // --- GEMINI FEATURES ---
+
+        // 1. IA Creator
+        async function handleAICreation() {
+            const prompt = document.getElementById('ai-creator-prompt').value;
+            if (!prompt) return;
+            
+            const log = document.getElementById('ai-creator-log');
+            log.innerText = "Gemini está projetando o seu mundo... ✨";
+
+            const system = `Você é um arquiteto de mundos 3D. Gere APENAS um código JSON representando uma lista de blocos. 
+            Cada bloco deve ter: { "x": numero, "y": numero, "z": numero, "w": largura, "h": altura, "d": profundidade, "color": "0xHEX" }.
+            O chão está em y=0. Limite a 15 blocos interessantes.`;
+            
+            const response = await fetchGemini(`Crie o seguinte mapa: ${prompt}`, system);
+            if (!response) {
+                log.innerText = "Falha ao consultar a IA.";
+                return;
+            }
+
+            try {
+                const jsonStr = response.replace(/```json|```/g, "").trim();
+                const blocks = JSON.parse(jsonStr);
+                
+                // Limpar blocos antigos gerados por IA
+                platforms.forEach(p => { if(p.isAI) scene.remove(p); });
+                platforms = platforms.filter(p => !p.isAI);
+
+                blocks.forEach(b => {
+                    const geo = new THREE.BoxGeometry(b.w, b.h, b.d);
+                    const mat = new THREE.MeshStandardMaterial({ color: parseInt(b.color) });
+                    const mesh = new THREE.Mesh(geo, mat);
+                    mesh.position.set(b.x, b.y + b.h/2, b.z);
+                    mesh.receiveShadow = true;
+                    mesh.castShadow = true;
+                    mesh.isAI = true;
+                    scene.add(mesh);
+                    platforms.push(mesh);
+                });
+
+                log.innerText = "Mundo construído com sucesso! Vá para o Baseplate para explorar. ✨";
+            } catch (err) {
+                log.innerText = "A IA gerou um formato inválido. Tente novamente.";
+                console.error(err);
+            }
+        }
+
+        // 2. IA Chat Guide
+        async function handleAIChat() {
+            const input = document.getElementById('ai-chat-input');
+            const display = document.getElementById('ai-chat-display');
+            const text = input.value;
+            if (!text) return;
+
+            const userMsg = document.createElement('div');
+            userMsg.className = "ai-chat-msg";
+            userMsg.innerHTML = `<b>Você:</b> ${text}`;
+            display.appendChild(userMsg);
+            input.value = "";
+            display.scrollTop = display.scrollHeight;
+
+            const system = `Você é o 'Guia do Jogo' no estilo de suporte do Roblox em 2017. 
+            Seja amigável, nostálgico e use gírias leves da época. 
+            Responda brevemente (máximo 20 palavras).`;
+            
+            const response = await fetchGemini(text, system);
+            
+            const aiMsg = document.createElement('div');
+            aiMsg.className = "ai-chat-msg";
+            aiMsg.innerHTML = `<b>Guia ✨:</b> ${response || 'Estou com lag agora, tente de novo!'}`;
+            display.appendChild(aiMsg);
+            display.scrollTop = display.scrollHeight;
+        }
+
+        // 3. IA Avatar Style
+        async function handleAIStyle() {
+            const input = document.getElementById('ai-style-input').value;
+            if (!input) return;
+
+            const system = `Retorne APENAS um código hexadecimal de cor para o torso baseado no tema do usuário. Formato: 0xXXXXXX.`;
+            const response = await fetchGemini(`Tema: ${input}`, system);
+            
+            if (response) {
+                const colorMatch = response.match(/0x[a-fA-F0-9]{6}/);
+                if (colorMatch) {
+                    window.updateAvatar('torso', parseInt(colorMatch[0]));
+                }
+            }
+        }
+
+        // --- CORE GAME LOGIC ---
+
+        function createRig(cfg) {
+            const group = new THREE.Group();
+            const mat = (c) => new THREE.MeshStandardMaterial({ color: c });
+            const torso = new THREE.Mesh(new THREE.BoxGeometry(2, 2, 1), mat(cfg.torso));
+            torso.position.y = 3; torso.name = "Torso"; group.add(torso);
+            const head = new THREE.Mesh(new THREE.BoxGeometry(1.2, 1.2, 1.2), mat(cfg.head));
+            head.position.y = 1.6; head.name = "Head"; torso.add(head);
+            const lArm = new THREE.Mesh(new THREE.BoxGeometry(1, 2, 1), mat(cfg.head));
+            lArm.position.set(-1.5, 0, 0); torso.add(lArm);
+            const rArm = new THREE.Mesh(new THREE.BoxGeometry(1, 2, 1), mat(cfg.head));
+            rArm.position.set(1.5, 0, 0); torso.add(rArm);
+            const lLeg = new THREE.Mesh(new THREE.BoxGeometry(1, 2, 1), mat(cfg.legs));
+            lLeg.position.set(-0.5, -2, 0); lLeg.name = "LeftLeg"; torso.add(lLeg);
+            const rLeg = new THREE.Mesh(new THREE.BoxGeometry(1, 2, 1), mat(cfg.legs));
+            rLeg.position.set(0.5, -2, 0); rLeg.name = "RightLeg"; torso.add(rLeg);
+            group.traverse(o => { if(o.isMesh) { o.castShadow = true; o.receiveShadow = true; } });
+            return group;
+        }
+
+        async function init() {
+            try {
+                const firebaseConfig = JSON.parse(__firebase_config);
+                app = initializeApp(firebaseConfig);
+                auth = getAuth(app);
+                db = getFirestore(app);
+
+                if (typeof __initial_auth_token !== 'undefined' && __initial_auth_token) {
+                    await signInWithCustomToken(auth, __initial_auth_token);
+                } else {
+                    await signInAnonymously(auth);
+                }
+
+                onAuthStateChanged(auth, u => { 
+                    currentUser = u; 
+                    if (u) {
+                        document.getElementById('player-nick-display').innerText = playerNick;
+                        document.getElementById('player-id-display').innerText = "ID: " + playerID;
+                    }
+                });
+
+                scene = new THREE.Scene();
+                scene.background = new THREE.Color(0x87ceeb);
+                camera = new THREE.PerspectiveCamera(75, window.innerWidth/window.innerHeight, 0.1, 1000);
+                renderer = new THREE.WebGLRenderer({ antialias: true });
+                renderer.setSize(window.innerWidth, window.innerHeight);
+                renderer.shadowMap.enabled = true;
+                document.body.appendChild(renderer.domElement);
+                clock = new THREE.Clock();
+
+                menuScene = new THREE.Scene();
+                menuCamera = new THREE.PerspectiveCamera(45, 1, 0.1, 100);
+                menuCamera.position.set(0, 3, 9);
+                menuRenderer = new THREE.WebGLRenderer({ antialias: true, alpha: true });
+                const cont = document.getElementById('menu-avatar-container');
+                menuRenderer.setSize(cont.clientWidth, cont.clientHeight);
+                cont.appendChild(menuRenderer.domElement);
+
+                const lights = (s) => {
+                    s.add(new THREE.AmbientLight(0xffffff, 0.6));
+                    const d = new THREE.DirectionalLight(0xffffff, 0.8);
+                    d.position.set(10, 20, 10); d.castShadow = true; s.add(d);
+                };
+                lights(scene); lights(menuScene);
+
+                myPlayerMesh = createRig(myAvatar);
+                scene.add(myPlayerMesh);
+                menuPlayerMesh = createRig(myAvatar);
+                menuScene.add(menuPlayerMesh);
+
+                setupControls();
+                
+                // Eventos de IA
+                document.getElementById('btn-ai-create').onclick = handleAICreation;
+                document.getElementById('btn-ai-chat-send').onclick = handleAIChat;
+                document.getElementById('btn-ai-style').onclick = handleAIStyle;
+
+                animate();
+            } catch (e) { console.error(e); }
+        }
+
+        function generateMap(room) {
+            platforms.forEach(p => { if(!p.isAI) scene.remove(p); });
+            platforms = platforms.filter(p => p.isAI);
+
+            const ground = new THREE.Mesh(new THREE.PlaneGeometry(500, 500), new THREE.MeshStandardMaterial({ color: 0x3d7044 }));
+            ground.rotation.x = -Math.PI/2; ground.receiveShadow = true;
+            scene.add(ground); platforms.push(ground);
+
+            if(room === 'Obby') {
+                for(let i=1; i<=10; i++) {
+                    const block = new THREE.Mesh(new THREE.BoxGeometry(6, 1, 6), new THREE.MeshStandardMaterial({color: 0xef3340}));
+                    block.position.set(0, i * 2, -i * 10);
+                    scene.add(block); platforms.push(block);
+                }
+            }
+        }
+
+        window.joinRoom = async (name) => {
+            if(!currentUser) return;
+            currentRoom = name;
+            generateMap(name);
+            document.getElementById('menu-screen').classList.add('hidden');
+            document.getElementById('game-hud').classList.remove('hidden');
+            document.getElementById('joystick-ui').style.display = 'block';
+            document.getElementById('jump-ui').style.display = 'flex';
+
+            const q = collection(db, 'artifacts', appId, 'public', 'data', currentRoom);
+            onSnapshot(q, (snapshot) => {
+                snapshot.docChanges().forEach(change => {
+                    const id = change.doc.id;
+                    if(id === currentUser.uid) return;
+                    const data = change.doc.data();
+                    if(change.type === "added" || change.type === "modified") {
+                        if(!otherPlayers[id]) {
+                            const mesh = createRig(data.avatar);
+                            scene.add(mesh);
+                            const tag = document.createElement('div');
+                            tag.className = 'name-tag';
+                            tag.innerText = data.nick;
+           
